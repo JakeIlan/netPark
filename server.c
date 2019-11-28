@@ -25,14 +25,17 @@ struct tInfo {
 } *clients;
 
 struct payLog {
+    struct tInfo client;
     int payment;
-    int summary;
+    int change;
 } *pLog;
 
+int summary;
 int clientQuantity = 0;
 
 void* clientHandler(void* args);
 void* connectionListener(void* args);
+void* payment(int payNum);
 void* kickClient(int kickNum);
 int readN(int socket, char* buf);
 
@@ -230,11 +233,17 @@ int readN(int socket, char* buf){
     return result;
 }
 
+void* payment(int payNum) {
+
+
+}
+
 void* kickClient(int kickNum){
     pthread_mutex_lock(&mutex);
     int check = 0;
     for(int i = 0; i < clientQuantity; i++){
         if(clients[i].number == kickNum) {
+            payment(kickNum);
             shutdown(clients[i].socket, 2);
             close(clients[i].socket);
             clients[i].socket = -1;
