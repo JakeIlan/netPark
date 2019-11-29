@@ -8,7 +8,7 @@
 #include <pthread.h>
 #include <string.h>
 
-#define PORT 62320 //Порт сервера
+#define PORT 1234 //Порт сервера
 #define SIZE_MSG 100
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -17,14 +17,13 @@ struct tInfo {
     pthread_t threadId;
     pthread_t timerThd;
     int socket;
-    char* address;
     char* lic;
-    int port;
     int number;
     int time;
+    int cond; // cond == 1 -> is parked; 0 -> new client, 2 -> released client
 } *clients;
 
-struct payLog {
+struct payLog { // TODO log
     struct tInfo client;
     int payment;
     int change;
@@ -34,8 +33,9 @@ int summary;
 int clientQuantity = 0;
 
 void* clientHandler(void* args);
+void* clientTimer(void* args);
 void* connectionListener(void* args);
-void* payment(int payNum);
+void* cashier(int payNum);
 void* kickClient(int kickNum);
 int readN(int socket, char* buf);
 
@@ -89,18 +89,18 @@ int main( int argc, char** argv) {
 
         if(!strcmp("/help", buf)){
             printf("HELP:\n");
-            printf("\'/lc\' to list users on-line;\n");
+            printf("\'/lc\' to list clients\n");
             printf("\'/kick [number client]\' to kick client from server;\n");
             printf("\'/quit or /q\' to shutdown;\n");
             fflush(stdout);
         } else if(!strcmp("/lc", buf)){
             printf("Clients on-line:\n");
-            printf(" NUMBER      ADDRESS         PORT\n");
+            printf("N TIME\n");
 
             pthread_mutex_lock(&mutex);
             for(int i = 0; i < clientQuantity; i++){
                 if(clients[i].socket != -1)
-                    printf("  %d       %s        %d\n", clients[i].number, clients[i].address, clients[i].port);
+                    printf("%d %d\n", clients[i].number, clients[i].time);
             }
             pthread_mutex_unlock(&mutex);
 
@@ -140,7 +140,7 @@ int main( int argc, char** argv) {
 }
 
 //Обработка одного клиента
-void* clientHandler(void* args){
+void* clientHandler(void* args){ //TODO quit handler, parking condition 1, LIC
 
     pthread_mutex_lock(&mutex);
     int index = *((int*)args);
@@ -158,14 +158,71 @@ void* clientHandler(void* args){
             clients[index].socket = -1;
             pthread_mutex_unlock(&mutex);
             break;
-        } else {
-            printf("Message from client №%d: %s\n", index, msg); fflush(stdout);
+
+        } else if(!strcmp("/release" ,msg))   {
+            printf("Client №%d sent leave request.\n", index);
+            fflush(stdout);
+
+            snprintf(msg, SIZE_MSG, "%d", clients[index].time);
             send(sock, msg, sizeof(msg), 0);
+            clients[index].cond = 2;
+          //  kickClient(index);
+        } else {
+            char *sep = " ";
+            char *str = strtok(msg, sep);
+            if(str == NULL) {
+                printf("Undefined message from client %d.\n", index);
+                fflush(stdout);
+                send(sock, "Wrong command.\n", strlen("Wrong command.\n"), 0);
+                continue;
+            }
+            if(!strcmp("/park", str)){
+                if (clients[index].cond != 1){
+                    str = strtok(NULL, sep);
+                    if (str != NULL) {
+                        clients[index].lic = str;
+                        clients[index].cond = 1;
+                        printf("LIC %s added\n", str);
+                    }
+                }
+
+            } else if(!strcmp("/pay", str)){
+                str = strtok(NULL, sep);
+                if (str != NULL) {
+                    int pay = atoi(str);
+
+                    if (str[0] != '0' && pay == 0) {
+                        strcpy(msg, "Dude, you have to /pay NUMBER.\n");
+                        send(sock, msg, sizeof(msg), 0);
+                        continue;
+                    }
+                    printf("Received payment %d$ from client %d.\n", pay, index);
+                    fflush(stdout);
+                }
+
+            }
+
         }
         memset(msg, 0, sizeof(msg));
     }
 
     printf("ENDED CLIENT №%d!\n", index); fflush(stdout);
+}
+
+void* clientTimer(void* args) {
+    pthread_mutex_lock(&mutex);
+    int index = *((int*)args);
+    pthread_mutex_unlock(&mutex);
+   // if (clients[index].cond == 1) {
+        for (;;) {
+            if (clients[index].cond == 2){
+                break;
+            }
+            clients[index].time++;
+            sleep(1);
+        }
+ //   }
+
 }
 
 void* connectionListener(void* args){
@@ -189,6 +246,7 @@ void* connectionListener(void* args){
             }
             for (int i = 0; i < clientQuantity; i++){
                 pthread_join(clients[i].threadId, NULL);
+                pthread_join(clients[i].timerThd, NULL);
             }
             pthread_mutex_unlock(&mutex);
 
@@ -198,12 +256,18 @@ void* connectionListener(void* args){
         pthread_mutex_lock(&mutex);
         clients = (struct tInfo*) realloc(clients, sizeof(struct tInfo) * (clientQuantity + 1));
         clients[clientQuantity].socket = s;
-        clients[clientQuantity].address = inet_ntoa(a.sin_addr);
-        clients[clientQuantity].port = a.sin_port;
+//        clients[clientQuantity].address = inet_ntoa(a.sin_addr);
+//        clients[clientQuantity].port = a.sin_port;
         clients[clientQuantity].number = clientQuantity;
+        clients[clientQuantity].cond = 0;
+        clients[clientQuantity].time = 0;
         indexClient = clientQuantity;
         if(pthread_create(&(clients[clientQuantity].threadId), NULL, clientHandler, (void*) &indexClient)) {
             printf("ERROR: Can't create thread for client!\n"); fflush(stdout);
+            continue;
+        }
+        if(pthread_create(&(clients[clientQuantity].timerThd), NULL, clientTimer, (void*) &indexClient)) {
+            printf("ERROR: Can't create timer thread for client!\n"); fflush(stdout);
             continue;
         }
 
@@ -233,17 +297,16 @@ int readN(int socket, char* buf){
     return result;
 }
 
-void* payment(int payNum) {
-
-
+void* cashier(int payNum) {
+    //TODO cashier processing
 }
 
 void* kickClient(int kickNum){
     pthread_mutex_lock(&mutex);
     int check = 0;
+    char msg[15] = "slish plati";
     for(int i = 0; i < clientQuantity; i++){
         if(clients[i].number == kickNum) {
-            payment(kickNum);
             shutdown(clients[i].socket, 2);
             close(clients[i].socket);
             clients[i].socket = -1;
