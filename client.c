@@ -8,16 +8,17 @@
 #include <pthread.h>
 #include <string.h>
 
-#define PORT 1234 //Порт сервера
+#define PORT 12345 //Порт сервера
 #define IP_SERVER "127.0.0.1" //Адрес сервера
 #define SIZE_MSG 100
 
-int readN(int socket, char* buf);
+int readN(int socket, char *buf);
 
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
 
-    printf("Welcome, traveller!\n"); fflush(stdout);
+    printf("Welcome, traveller!\n");
+    fflush(stdout);
 
     struct sockaddr_in peer;
     peer.sin_family = AF_INET;
@@ -26,7 +27,7 @@ int main(int argc, char** argv) {
     int sock = -1;
     int rc = -1;
 
-    for(;;){
+    for (;;) {
 //        printf("Please, enter IP address:\n");
 //        fflush(stdout);
 //
@@ -49,16 +50,19 @@ int main(int argc, char** argv) {
 
         sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock == -1) {
-            printf("ERROR: Can't create socket! Try again.\n"); fflush(stdout);
+            printf("ERROR: Can't create socket! Try again.\n");
+            fflush(stdout);
             break;
         }
 
-        int rc = connect(sock, (struct sockaddr*) &peer, sizeof(peer));
-        if(rc == -1){
-            perror("ERROR: Can't connect to server! Try again.\n"); fflush(stdout);
+        int rc = connect(sock, (struct sockaddr *) &peer, sizeof(peer));
+        if (rc == -1) {
+            perror("ERROR: Can't connect to server! Try again.\n");
+            fflush(stdout);
             break;
         } else {
-            printf("Connected.\n"); fflush(stdout);
+            printf("Connected.\n");
+            fflush(stdout);
             break;
         }
     }
@@ -67,24 +71,33 @@ int main(int argc, char** argv) {
     char msg_buf[SIZE_MSG] = {0};
     printf("Input (\'/help\' to help): \n");
     fflush(stdout);
-    for(;;){
+    for (;;) {
         fgets(inputBuf, sizeof(inputBuf), stdin);
         inputBuf[strlen(inputBuf) - 1] = '\0';
 
-        if(!strcmp("/help", inputBuf)){
+        if (!strcmp("/help", inputBuf)) {
             printf("HELP:\n");
             printf("\'/park LIC\' to park a car with LIC license plate\n");
             printf("\'/release\' to request receipt\n");
             printf("\'/quit or /q\' to leave after paying receipt\n");
             fflush(stdout);
-        } else if((!strcmp("/quit", inputBuf)) || (!strcmp("/q", inputBuf))) {
-            shutdown(sock, 2);
-            break;
-        } else if(!strcmp("/release", inputBuf))  {
+        } else if (!strcmp("/q", inputBuf)) {
+            send(sock, inputBuf, sizeof(inputBuf), 0);
+            if (readN(sock, msg) <= 0) {
+                printf("Out of service...\n");
+                fflush(stdout);
+                close(sock);
+                break;
+            } else {
+                printf("%s\n", msg);
+                fflush(stdout);
+            }
+        } else if (!strcmp("/release", inputBuf)) {
             send(sock, inputBuf, sizeof(inputBuf), 0);
 
             if (readN(sock, msg) <= 0) {
-                printf("Out of service...\n"); fflush(stdout);
+                printf("Out of service...\n");
+                fflush(stdout);
                 close(sock);
                 break;
             } else {
@@ -97,17 +110,17 @@ int main(int argc, char** argv) {
             strcpy(msg_buf, inputBuf);
             char *sep = " ";
             char *str = strtok(msg_buf, sep);
-            if(str == NULL) {
+            if (str == NULL) {
                 printf("Wrong syntax! Try /help to see command menu.\n");
                 fflush(stdout);
                 continue;
             }
-            if(!strcmp("/park", str)){
+            if (!strcmp("/park", str)) {
                 str = strtok(NULL, sep);
                 if (str != NULL) {
                     send(sock, inputBuf, sizeof(inputBuf), 0);
                 }
-            } else if(!strcmp("/pay", str)){
+            } else if (!strcmp("/pay", str)) {
                 str = strtok(NULL, sep);
                 if (str != NULL) {
                     int pay = atoi(str);
@@ -118,6 +131,15 @@ int main(int argc, char** argv) {
                         continue;
                     }
                     send(sock, inputBuf, sizeof(inputBuf), 0);
+                    if (readN(sock, msg) <= 0) {
+                        printf("Out of service...\n");
+                        fflush(stdout);
+                        close(sock);
+                        break;
+                    } else {
+                        printf("Your current debt: %s$\n", msg);
+                        fflush(stdout);
+                    }
                 }
             }
 
@@ -125,21 +147,19 @@ int main(int argc, char** argv) {
         memset(inputBuf, 0, 100);
     }
 
-    printf("ENDED CLIENT!\n"); fflush(stdout);
+    printf("ENDED CLIENT!\n");
+    fflush(stdout);
 
     return 0;
 }
 
-int readN(int socket, char* buf){
+int readN(int socket, char *buf) {
     int result = 0;
     int readBytes = 0;
     int sizeMsg = SIZE_MSG;
-    readBytes = recv(socket, buf, sizeMsg, 0);
-    result += readBytes;
-    sizeMsg -= readBytes;
-    while(sizeMsg > 0){
+    while (sizeMsg > 0) {
         readBytes = recv(socket, buf + result, sizeMsg, 0);
-        if (readBytes <= 0){
+        if (readBytes <= 0) {
             return -1;
         }
         result += readBytes;
