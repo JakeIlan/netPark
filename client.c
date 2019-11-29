@@ -89,7 +89,7 @@ int main(int argc, char** argv) {
                 break;
             } else {
                 printf("Your time is: %s\n", msg);
-                printf("You have to /pay at least 8$ to leave\n");
+                printf("You have to /pay at least %s$ to leave\n", msg);
                 fflush(stdout);
             }
         } else {
