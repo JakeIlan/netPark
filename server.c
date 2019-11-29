@@ -184,6 +184,10 @@ void* clientHandler(void* args){ //TODO quit handler, parking condition 1, LIC
                         clients[index].cond = 1;
                         printf("LIC %s added\n", str);
                     }
+                } else{
+                    printf("New parking without release from Client %d\n", index);
+                    fflush(stdout);
+                    send(sock, "New parking without release\n", strlen("New parking without release\n"), 0);
                 }
 
             } else if(!strcmp("/pay", str)){
