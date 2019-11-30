@@ -69,6 +69,11 @@ int main(int argc, char **argv) {
 
     char msg[SIZE_MSG] = {0};
     char msg_buf[SIZE_MSG] = {0};
+    printf("Welcome to parking system\n");
+    printf("To park new car use /park LICENSE\n");
+    printf("To request pay ticket use /release\n");
+    printf("After that, you can use /pay NUM to pay\n");
+    printf("After paying off you`re allowed to /quit or /park again\n");
     printf("Input (\'/help\' to help): \n");
     fflush(stdout);
     for (;;) {
@@ -79,9 +84,10 @@ int main(int argc, char **argv) {
             printf("HELP:\n");
             printf("\'/park LIC\' to park a car with LIC license plate\n");
             printf("\'/release\' to request receipt\n");
+            printf("\'/pay NUM\' to pay\n");
             printf("\'/quit or /q\' to leave after paying receipt\n");
             fflush(stdout);
-        } else if (!strcmp("/q", inputBuf)) {
+        } else if (!strcmp("/q", inputBuf) || !strcmp("/quit", inputBuf)) {
             send(sock, inputBuf, sizeof(inputBuf), 0);
             if (readN(sock, msg) <= 0) {
                 printf("Out of service...\n");
@@ -102,6 +108,15 @@ int main(int argc, char **argv) {
                 break;
             } else {
                 printf("Your time is: %s\n", msg);
+                fflush(stdout);
+            }
+
+            if (readN(sock, msg) <= 0) {
+                printf("Out of service...\n");
+                fflush(stdout);
+                close(sock);
+                break;
+            } else {
                 printf("You have to /pay at least %s$ to leave\n", msg);
                 fflush(stdout);
             }
@@ -119,6 +134,15 @@ int main(int argc, char **argv) {
                 str = strtok(NULL, sep);
                 if (str != NULL) {
                     send(sock, inputBuf, sizeof(inputBuf), 0);
+                    if (readN(sock, msg) <= 0) {
+                        printf("Out of service...\n");
+                        fflush(stdout);
+                        close(sock);
+                        break;
+                    } else {
+                        printf("%s\n", msg);
+                        fflush(stdout);
+                    }
                 }
             } else if (!strcmp("/pay", str)) {
                 str = strtok(NULL, sep);
@@ -137,7 +161,16 @@ int main(int argc, char **argv) {
                         close(sock);
                         break;
                     } else {
-                        printf("Your current debt: %s$\n", msg);
+                        int debt = atoi(msg);
+                        if (debt >= 0) {
+                            printf("Your current debt: %d$\n", debt);
+                        } else if (debt < 0) {
+                            printf("Your current debt is 0$ and you gained %d$ back\n", -debt);
+                            printf("Now you can /quit or /park again\n");
+                        } else if (debt == 0) {
+                            printf("Your current debt is 0$\n");
+                            printf("Now you can /quit or /park again\n");
+                        }
                         fflush(stdout);
                     }
                 }

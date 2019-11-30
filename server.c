@@ -97,6 +97,7 @@ int main(int argc, char **argv) {
         if (!strcmp("/help", buf)) {
             printf("HELP:\n");
             printf("\'/lc\' to list clients\n");
+            printf("\'/log\' to see transaction history\n");
             printf("\'/kick [number client]\' to kick client from server;\n");
             printf("\'/quit or /q\' to shutdown;\n");
             fflush(stdout);
@@ -179,19 +180,33 @@ void *clientHandler(void *args) { //TODO quit handler, parking condition 1, LIC
         } else if (!strcmp("/release", msg)) {
             printf("Client №%d sent leave request.\n", index);
             fflush(stdout);
+            if (clients[index].cond == 1) {
+                snprintf(msg, SIZE_MSG, "%d", clients[index].time);
+                send(sock, msg, sizeof(msg), 0);
+                clients[index].cond = 2;
+                clients[index].debt = clients[index].time * 2;
+                snprintf(msg, SIZE_MSG, "%d", clients[index].debt);
+                send(sock, msg, sizeof(msg), 0);
+            } else if (clients[index].cond == 0 || clients[index].cond == 3) {
+                strcpy(msg, "You need to park your car first\n");
+                send(sock, msg, sizeof(msg), 0);
+                strcpy(msg, "Use /park LICENSE\n");
+                send(sock, msg, sizeof(msg), 0);
+            } else if (clients[index].cond == 2) {
+                strcpy(msg, "You already sent release request\n");
+                send(sock, msg, sizeof(msg), 0);
+                strcpy(msg, "Now you can /pay NUM to pay your debt\n");
+                send(sock, msg, sizeof(msg), 0);
+            }
 
-            snprintf(msg, SIZE_MSG, "%d", clients[index].time);
-            send(sock, msg, sizeof(msg), 0);
-            clients[index].cond = 2;
-            clients[index].debt = clients[index].time;
             //  kickClient(index);
-        } else if (!strcmp("/q", msg)) {
+        } else if ((!strcmp("/q", msg)) || (!strcmp("/quit", msg))) {
             if (clients[index].cond == 3) {
                 kickClient(index);
             } else {
-                strcpy(msg, "You little piece of crap\n");
+                strcpy(msg, "You have to pay your debt before quitting\n");
                 send(sock, msg, sizeof(msg), 0);
-                printf("Client %d is a dirty rat\n", index);
+                printf("Client %d tried to quit without paying debt\n", index);
                 fflush(stdout);
             }
         } else {
@@ -203,14 +218,22 @@ void *clientHandler(void *args) { //TODO quit handler, parking condition 1, LIC
                 continue;
             }
             if (!strcmp("/park", str)) {
-                if (clients[index].cond != 1) {
+                if (clients[index].cond == 0) {
                     str = strtok(NULL, sep);
                     if (str != NULL) {
                         strcpy(clients[index].lic, str);
                         clients[index].cond = 1;
                         printf("added LIC %s\n", str);
+                        strcpy(msg, "You parked successfully, when you ready to leave, use /release.\n");
+                        send(sock, msg, sizeof(msg), 0);
                         fflush(stdout);
                     }
+                } else  if (clients[index].cond == 1 || clients[index].cond == 2){
+                    strcpy(msg, "You cannot park another car before releasing previous one.\n");
+                    send(sock, msg, sizeof(msg), 0);
+                } else  if (clients[index].cond == 3){
+                    strcpy(msg, "You payed your debt and now allowed to leave. To park new car restart client.\n");
+                    send(sock, msg, sizeof(msg), 0);
                 }
 
             } else if (!strcmp("/pay", str)) {
@@ -245,11 +268,11 @@ void *clientHandler(void *args) { //TODO quit handler, parking condition 1, LIC
                     operations++;
 //                    printf("%d %d %d\n", index, pay, cash);
 //                    printf("%d %d %d\n", pLog[operations-1].client, pLog[operations-1].payment, pLog[operations-1].change);
-                    if (cash == 0) {
+//                    if (cash == 0) {
                         snprintf(msg, SIZE_MSG, "%d", clients[index].debt);
-                    } else {
-                        snprintf(msg, SIZE_MSG, "%d", cash);
-                    }
+//                    } else {
+//                        snprintf(msg, SIZE_MSG, "%d", cash);
+//                    }
                     send(sock, msg, sizeof(msg), 0);
                     pthread_mutex_unlock(&mutex);
                     fflush(stdout);
@@ -269,7 +292,7 @@ void *clientTimer(void *args) {
     pthread_mutex_lock(&mutex);
     int index = *((int *) args);
     pthread_mutex_unlock(&mutex);
-
+    clients[clientQuantity].time = 0;
     for (;;) {
         if (clients[index].cond == 2) {
             break;
